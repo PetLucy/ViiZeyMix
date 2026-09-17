@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.petlucy.viizeymix</id>
+  <name>ViiZeyMix</name>
+  <summary>A friendly VoiceMeeter-style mixer for PipeWire</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>ViiZeyMix combines PipeWire device discovery, source-to-bus routing,
+    virtual mix buses, live meters, volume and gain controls, and native
+    IntelliPan processing in one mixer interface.</p>
+  </description>
+  <launchable type="desktop-id">io.github.petlucy.viizeymix.desktop</launchable>
+  <url type="homepage">https://github.com/PetLucy/ViiZeyMix</url>
+  <url type="bugtracker">https://github.com/PetLucy/ViiZeyMix/issues</url>
+  <provides>
+    <binary>viizeymix</binary>
+  </provides>
+  <releases>
+    <release version="0.7.1" date="2026-09-17">
+      <description>
+        <p>Adds the EGL and Qt runtime libraries required by the AppImage build runner.</p>
+      </description>
+    </release>
+    <release version="0.7.0" date="2026-09-17"/>
+  </releases>
+</component>

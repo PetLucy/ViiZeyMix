@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=ViiZeyMix
+GenericName=Audio Mixer
+Comment=VoiceMeeter-style PipeWire mixer and router
+Exec=viizeymix
+Icon=io.github.petlucy.viizeymix
+Terminal=false
+Categories=AudioVideo;Audio;Mixer;
+Keywords=audio;mixer;pipewire;routing;voicemeeter;streaming;
+StartupNotify=true
+StartupWMClass=ViiZeyMix
