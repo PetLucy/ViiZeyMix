@@ -1,0 +1,11 @@
+/build/
+/build-*/
+/AppDir/
+/dist/
+/dist-appimage/
+/*.AppImage
+/*.AppImage.zsync
+*.spec
+__pycache__/
+*.py[cod]
+.venv/
