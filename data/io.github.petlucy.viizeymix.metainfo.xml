@@ -17,6 +17,11 @@
     <binary>viizeymix</binary>
   </provides>
   <releases>
+    <release version="0.7.2" date="2026-09-18">
+      <description>
+        <p>Adds the full Qt XCB platform dependency set to AppImage builds.</p>
+      </description>
+    </release>
     <release version="0.7.1" date="2026-09-17">
       <description>
         <p>Adds the EGL and Qt runtime libraries required by the AppImage build runner.</p>

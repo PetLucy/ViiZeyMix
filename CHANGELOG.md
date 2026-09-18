@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.2 - 2026-09-18
+
+- Added the complete Qt XCB platform dependency set to the Ubuntu AppImage
+  builder, including `libxcb-icccm.so.4`.
+- Added early checks for both EGL and XCB ICCCM before linuxdeploy runs.
+
 ## 0.7.1 - 2026-09-17
 
 - Fixed the AppImage workflow on the headless Ubuntu runner by installing the

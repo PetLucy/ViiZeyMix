@@ -3,7 +3,7 @@
 ViiZeyMix is a VoiceMeeter-style mixer for Linux built around PipeWire,
 PySide6, and native C audio helpers.
 
-Version 0.7.1 is the first packaging-ready release. The same source tree now
+Version 0.7.2 is the first packaging-ready release. The same source tree now
 supports development builds, normal system installation, an Arch/AUR package,
 and a portable AppImage.
 
@@ -92,8 +92,8 @@ bash packaging/appimage/build-appimage.sh
 The output is written to:
 
 ```text
-dist-appimage/ViiZeyMix-0.7.1-x86_64.AppImage
-dist-appimage/ViiZeyMix-0.7.1-x86_64.AppImage.sha256
+dist-appimage/ViiZeyMix-0.7.2-x86_64.AppImage
+dist-appimage/ViiZeyMix-0.7.2-x86_64.AppImage.sha256
 ```
 
 The AppImage bundles the ViiZeyMix frontend, PySide6/Qt, and both native
@@ -130,7 +130,7 @@ Do not submit the temporary `SKIP` checksum. More details are in
 2. Update `CHANGELOG.md` and the AppStream release entry.
 3. Run `scripts/release-check.sh`.
 4. Commit and push the source.
-5. Create and push the matching tag, for example `v0.7.1`.
+5. Create and push the matching tag, for example `v0.7.2`.
 6. Let GitHub Actions create or update the release and attach the AppImage.
 7. Run `updpkgsums`, regenerate `.SRCINFO`, test, and push the AUR package.
 

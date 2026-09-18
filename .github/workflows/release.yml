@@ -21,15 +21,42 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libegl1 \
+            libfontconfig1-dev \
+            libfreetype-dev \
             libgl1 \
+            libgtk-3-dev \
             libpipewire-0.3-dev \
             libxcb-cursor0 \
+            libxcb-cursor-dev \
+            libxcb-glx0-dev \
+            libxcb-icccm4 \
+            libxcb-icccm4-dev \
+            libxcb-image0-dev \
+            libxcb-keysyms1-dev \
+            libxcb-randr0-dev \
+            libxcb-render-util0-dev \
+            libxcb-shape0-dev \
+            libxcb-shm0-dev \
+            libxcb-sync-dev \
+            libxcb-util-dev \
+            libxcb-xfixes0-dev \
+            libxcb-xkb-dev \
+            libxcb1-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxkbcommon-dev \
             libxkbcommon-x11-0 \
+            libxkbcommon-x11-dev \
+            libxrender-dev \
             meson \
             ninja-build \
             pkg-config \
             wget
           ldconfig -p | grep -F 'libEGL.so.1'
+          ldconfig -p | grep -F 'libxcb-icccm.so.4'
 
       - name: Install Python packaging dependencies
         run: python3 -m pip install --upgrade PySide6 PyInstaller
