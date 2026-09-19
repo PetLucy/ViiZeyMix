@@ -1,177 +1,74 @@
-# ViiZeyMix
+# VoiceMix v0.1
 
-ViiZeyMix is a VoiceMeeter-style mixer for Linux built around PipeWire,
-PySide6, and native C audio helpers.
+A first-pass VoiceMeeter-style mixer UI for Linux, built around:
 
-Version 0.7.3 is the first packaging-ready release. The same source tree now
-supports development builds, normal system installation, an Arch/AUR package,
-and a portable AppImage.
+- **PySide6** for the GUI
+- **C + libpipewire** for native PipeWire discovery
+- **wpctl** for simple volume/mute control in v0.1
 
-## Current features
+This release is intentionally a prototype. The goal is to establish the UI and
+interaction model before we build the full routing engine.
 
-- PipeWire hardware, microphone, and application-stream discovery
-- separate Inputs & Sources and Outputs & Buses views
-- A1-A3 hardware output assignments
-- B1-B3 virtual Stream, Chat, and Record mix buses
-- persistent hardware bus selection
-- multi-output source routing
-- live -60 to 0 dBFS peak meters
-- honest 0-100% volume attenuation plus separate 0 to +12 dB gain
-- mute controls
-- native IntelliPan Color, Modulation, and Position processing
-- cleanup of ViiZeyMix filters and meters on explicit exit
+## What works
+
+- Detects PipeWire audio nodes through the C backend
+- Groups streams/sources/sinks into mixer strips
+- Per-strip volume slider
+- Per-strip mute toggle
+- A1/A2/A3 + B1/B2/B3 routing buttons in the UI
+- Friendly VoiceMeeter-like channel strip layout
+- Hardware / virtual bus section
+- Refresh button
+- Dark pink/purple UI
+
+## Not wired up yet
+
+The routing buttons are UI-only in v0.1. They are meant to establish the layout
+and state model before the persistent PipeWire link manager is added.
+
+Meters are animated placeholders in v0.1 rather than true peak meters.
 
 ## Dependencies
 
-### Arch Linux and CachyOS
+On Arch / CachyOS:
 
 ```bash
-sudo pacman -S python pyside6 pipewire pipewire-pulse libpipewire libpulse wireplumber meson ninja pkgconf
+sudo pacman -S python-pyside6 pipewire libpipewire meson ninja pkgconf
 ```
 
-The `pipewire` package supplies `pw-cat`, `pw-link`, and `pw-dump`.
-WirePlumber supplies `wpctl`, while `libpulse` supplies `pactl`.
+`wpctl` is provided by PipeWire / WirePlumber on a normal CachyOS install.
 
-## Development build
+## Build
 
 ```bash
+cd voicemix-v0.1
 meson setup build
 meson compile -C build
+```
+
+## Run
+
+```bash
 python src/main.py
 ```
 
-If a build directory already exists:
-
-```bash
-meson setup --reconfigure build
-meson compile -C build
-```
-
-The native build produces:
-
-- `build/viizeymix-backend` for PipeWire discovery
-- `build/viizeymix-dsp` for live IntelliPan processing
-
-## System installation
-
-Meson now installs the complete application:
-
-```bash
-meson setup build --prefix=/usr
-meson compile -C build
-sudo meson install -C build
-viizeymix
-```
-
-Installed files include the launcher, Python frontend, native helpers, desktop
-entry, scalable icon, AppStream metadata, and license.
-
-For a staged package installation:
-
-```bash
-meson install -C build --destdir /path/to/package-root
-```
-
-Native helper lookup supports:
-
-1. `VIIZEYMIX_LIBEXEC_DIR`, for packaging and diagnostics
-2. a PyInstaller/AppImage bundle
-3. the development `build/` directory
-4. normal `/usr/lib/viizeymix` and `/usr/local/lib/viizeymix` installs
-
-## AppImage
-
-Install PySide6 and PyInstaller in the build environment, provide a
-`linuxdeploy` executable, then run:
-
-```bash
-export LINUXDEPLOY=/path/to/linuxdeploy-x86_64.AppImage
-bash packaging/appimage/build-appimage.sh
-```
-
-The output is written to:
+The GUI looks for the backend at:
 
 ```text
-dist-appimage/ViiZeyMix-0.7.3-x86_64.AppImage
-dist-appimage/ViiZeyMix-0.7.3-x86_64.AppImage.sha256
+./build/vm-backend
 ```
 
-The AppImage bundles the ViiZeyMix frontend, PySide6/Qt, and both native
-helpers. The host still needs a functioning PipeWire/WirePlumber audio stack
-and the PipeWire command-line tools.
+If the backend has not been built yet, the app still opens with demo channels so
+the UI can be worked on immediately.
 
-The GitHub workflow in `.github/workflows/release.yml` builds this AppImage on
-Ubuntu 22.04. A pushed version tag attaches the AppImage and checksum to the
-matching GitHub Release. The workflow can also be run manually without
-publishing a release.
+## v0.2 target
 
-## AUR
+The obvious next step is to replace the visual-only routing matrix with a real
+PipeWire graph manager:
 
-`packaging/aur/PKGBUILD` builds the native Arch package directly from a
-versioned GitHub source tag. The included checksum is deliberately `SKIP`
-until the first public tag exists.
-
-Before publishing to the AUR:
-
-```bash
-cp packaging/aur/PKGBUILD /path/to/aur/viizeymix/
-cd /path/to/aur/viizeymix
-updpkgsums
-makepkg --printsrcinfo > .SRCINFO
-makepkg -Ccf
-```
-
-Do not submit the temporary `SKIP` checksum. More details are in
-`packaging/aur/README.md`.
-
-## Release process
-
-1. Update the version in `src/version.py`, `meson.build`, and the AUR files.
-2. Update `CHANGELOG.md` and the AppStream release entry.
-3. Run `scripts/release-check.sh`.
-4. Commit and push the source.
-5. Create and push the matching tag, for example `v0.7.3`.
-6. Let GitHub Actions create or update the release and attach the AppImage.
-7. Run `updpkgsums`, regenerate `.SRCINFO`, test, and push the AUR package.
-
-When creating any additional downloadable source archive, use a fixed
-`SOURCE_DATE_EPOCH` or normalize its entries to a past UTC timestamp. This
-prevents the clock-skew failures seen in early test archives.
-
-## Command-line information
-
-```bash
-viizeymix --version
-```
-
-## Tests
-
-```bash
-meson test -C build --print-errorlogs
-python -m unittest discover -s tests -p 'test_*.py' -v
-```
-
-The release-check script runs the Python checks everywhere and adds the native
-build and DSP test when Meson and the PipeWire development files are present.
-
-## IntelliPan controls
-
-1. Assign A1-A3 hardware outputs as needed.
-2. Route a source to an A or B bus.
-3. Drag the source's IntelliPan pad.
-4. Right-click the pad to cycle Color, Modulation, and Position.
-5. Double-click to reset the visible panel.
-
-The effects share one stereo PipeWire filter per active strip and run in the
-order Color, Modulation, Position.
-
-## Remaining work
-
-- automatic route reattachment when an application returns with a new node ID
-- close-to-tray behavior with a distinct explicit Exit cleanup path
-- presets and broader configuration persistence
-- replacing remaining command-line PipeWire operations with native backend APIs
-
-## License
-
-ViiZeyMix is licensed under GPL-3.0-or-later. See `LICENSE`.
+- persistent app matching
+- A1/A2/A3 hardware bus assignment
+- B1/B2/B3 virtual sinks/sources
+- automatic reconnect when apps or USB devices reappear
+- real peak meters
+- saved layouts / profiles
