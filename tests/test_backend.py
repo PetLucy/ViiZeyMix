@@ -232,6 +232,13 @@ class RoutingTests(TestCase):
                 backend = PipeWireBackend()
             self.assertEqual(backend.backend_binary, helper)
 
+    def test_missing_native_helper_records_demo_mode_reason(self) -> None:
+        self.backend.backend_binary = Path("/definitely/missing/viizeymix-backend")
+        nodes = self.backend.enumerate_nodes()
+        self.assertTrue(nodes)
+        self.assertTrue(all(node.is_demo for node in nodes))
+        self.assertIn("was not found", self.backend.last_discovery_error or "")
+
 
 if __name__ == "__main__":
     main()

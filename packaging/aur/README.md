@@ -2,7 +2,7 @@
 
 This directory is the source for the separate `viizeymix` AUR repository.
 
-1. Push the ViiZeyMix release commit and create the matching `v0.7.2` tag.
+1. Push the ViiZeyMix release commit and create the matching `v0.7.3` tag.
 2. Copy `PKGBUILD` into the AUR repository.
 3. Run `updpkgsums`; never submit the included temporary `SKIP` checksum.
 4. Generate metadata with `makepkg --printsrcinfo > .SRCINFO`.

@@ -119,6 +119,7 @@ class PipeWireBackend:
         self.root = Path(__file__).resolve().parent.parent
         self.backend_binary = self.resolve_helper("viizeymix-backend")
         self.dsp_binary = self.resolve_helper("viizeymix-dsp")
+        self.last_discovery_error: str | None = None
         self.intellipan_state: dict[int, dict] = {}
         self.dsp_sessions: dict[int, DspSession] = {}
         self.meter_sessions: dict[int, MeterSession] = {}
@@ -169,6 +170,9 @@ class PipeWireBackend:
 
     def enumerate_nodes(self) -> list[AudioNode]:
         if not self.backend_binary.exists():
+            self.last_discovery_error = (
+                f"Native PipeWire helper was not found at {self.backend_binary}."
+            )
             return self.demo_nodes()
 
         try:
@@ -179,7 +183,21 @@ class PipeWireBackend:
                 timeout=3,
                 check=True,
             )
-        except (OSError, subprocess.SubprocessError):
+        except subprocess.CalledProcessError as error:
+            detail = (error.stderr or "").strip() or f"exit status {error.returncode}"
+            self.last_discovery_error = (
+                f"{self.backend_binary} could not enumerate PipeWire devices: {detail}"
+            )
+            return self.demo_nodes()
+        except subprocess.TimeoutExpired:
+            self.last_discovery_error = (
+                f"{self.backend_binary} timed out while connecting to PipeWire."
+            )
+            return self.demo_nodes()
+        except OSError as error:
+            self.last_discovery_error = (
+                f"{self.backend_binary} could not be started: {error}"
+            )
             return self.demo_nodes()
 
         nodes: list[AudioNode] = []
@@ -203,7 +221,13 @@ class PipeWireBackend:
             except (TypeError, ValueError, json.JSONDecodeError):
                 continue
 
-        return nodes or self.demo_nodes()
+        if not nodes:
+            self.last_discovery_error = (
+                "The native PipeWire helper ran but reported no audio devices."
+            )
+            return self.demo_nodes()
+        self.last_discovery_error = None
+        return nodes
 
     def ensure_virtual_buses(self) -> list[str]:
         """Create B1-B3 as PipeWire-Pulse null sinks when they are absent."""

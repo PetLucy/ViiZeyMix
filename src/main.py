@@ -586,6 +586,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.backend = PipeWireBackend()
+        self.discovery_error_shown = False
         self.channel_strips: list[ChannelStrip] = []
         self.input_strips: list[ChannelStrip] = []
         self.bus_targets: dict[str, AudioNode | None] = {
@@ -656,6 +657,16 @@ class MainWindow(QMainWindow):
         self.channel_strips.clear()
         self.input_strips.clear()
         nodes = self.backend.enumerate_nodes()
+        if self.backend.last_discovery_error and not self.discovery_error_shown:
+            self.discovery_error_shown = True
+            message = self.backend.last_discovery_error
+            QTimer.singleShot(
+                0,
+                lambda detail=message: self.show_error(
+                    "Live PipeWire discovery failed, so demo devices are being shown.\n\n"
+                    + detail
+                ),
+            )
         input_nodes = sorted(
             (
                 n

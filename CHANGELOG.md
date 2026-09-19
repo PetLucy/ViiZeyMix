@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.3 - 2026-09-18
+
+- Moved native PipeWire helpers out of PyInstaller's private `_internal`
+  directory and installed them explicitly as executable AppImage payloads.
+- Added a clear startup warning with the native discovery failure instead of
+  silently presenting demo devices.
+
 ## 0.7.2 - 2026-09-18
 
 - Added the complete Qt XCB platform dependency set to the Ubuntu AppImage

@@ -37,8 +37,6 @@ python3 -m PyInstaller \
     --onedir \
     --name viizeymix \
     --paths src \
-    --add-binary "$BUILD_DIR/viizeymix-backend:." \
-    --add-binary "$BUILD_DIR/viizeymix-dsp:." \
     src/main.py
 
 rm -rf "$APPDIR"
@@ -49,6 +47,16 @@ install -d \
     "$APPDIR/usr/share/metainfo" \
     "$APPDIR/usr/share/icons/hicolor/scalable/apps"
 cp -a "$PYINSTALLER_DIR/viizeymix" "$APPDIR/usr/lib/viizeymix"
+install -m755 "$BUILD_DIR/viizeymix-backend" \
+    "$APPDIR/usr/lib/viizeymix/viizeymix-backend"
+install -m755 "$BUILD_DIR/viizeymix-dsp" \
+    "$APPDIR/usr/lib/viizeymix/viizeymix-dsp"
+for helper in viizeymix-backend viizeymix-dsp; do
+    if ldd "$APPDIR/usr/lib/viizeymix/$helper" | grep -F 'not found'; then
+        echo "$helper has unresolved shared-library dependencies." >&2
+        exit 1
+    fi
+done
 ln -s ../lib/viizeymix/viizeymix "$APPDIR/usr/bin/viizeymix"
 install -Dm755 packaging/appimage/AppRun "$APPDIR/AppRun"
 install -Dm644 data/io.github.petlucy.viizeymix.desktop \
