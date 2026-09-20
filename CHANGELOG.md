@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.1 - 2026-09-20
+
+- Replaced the large Gate dial and detail page with a compact horizontal Gate
+  slider directly below Gain.
+- Removed the empty space caused by the stacked IntelliPan/Gate editor.
+- Removed the visible per-strip DSP status label.
+
+## 0.8.0 - 2026-09-20
+
+- Added a native stereo-linked noise gate before IntelliPan processing.
+- Added a VoiceMeeter-style 0-10 Gate dial with double-click reset.
+- Added a right-click detail panel for threshold, maximum damping, sidechain
+  frequency, attack, hold, and release.
+- Kept Gate and IntelliPan in one PipeWire processor so existing routes stay
+  connected while effects change.
+
 ## 0.7.4 - 2026-09-20
 
 - Added selectable B1, B2, and B3 capture devices for Discord, VRChat, OBS,

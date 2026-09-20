@@ -162,6 +162,57 @@ class RoutingTests(TestCase):
         self.assertTrue(result.success)
         deactivate.assert_called_once_with(10, [20])
 
+    def test_enabling_gate_migrates_existing_routes_through_filter(self) -> None:
+        process = MagicMock()
+        process.poll.return_value = None
+        session = DspSession(process, 30, "viizeymix_intellipan_10")
+        self.backend.set_gate_state(10, {"enabled": True, "threshold_db": -40.0})
+        with (
+            patch.object(
+                self.backend,
+                "ensure_intellipan_dsp",
+                return_value=(session, RoutingResult(True, "ready")),
+            ),
+            patch.object(
+                self.backend,
+                "_set_route_direct",
+                return_value=RoutingResult(True, "ok", 2),
+            ) as direct,
+            patch.object(
+                self.backend,
+                "write_gate_control",
+                return_value=RoutingResult(True, "updated"),
+            ),
+        ):
+            result = self.backend.set_gate_dsp(10, [20])
+        self.assertTrue(result.success)
+        self.assertEqual(direct.call_args_list, [call(30, 20, True), call(10, 20, False)])
+
+    def test_neutral_intellipan_does_not_bypass_active_gate(self) -> None:
+        process = MagicMock()
+        process.poll.return_value = None
+        session = DspSession(process, 30, "viizeymix_intellipan_10")
+        self.backend.dsp_sessions[10] = session
+        self.backend.set_gate_state(10, {"enabled": True})
+        self.backend.set_intellipan_state(10, "Color", 0.0, 0.0, {})
+        with (
+            patch.object(
+                self.backend,
+                "ensure_intellipan_dsp",
+                return_value=(session, RoutingResult(True, "ready")),
+            ),
+            patch.object(
+                self.backend,
+                "write_intellipan_control",
+                return_value=RoutingResult(True, "updated"),
+            ) as write,
+            patch.object(self.backend, "deactivate_intellipan_dsp") as deactivate,
+        ):
+            result = self.backend.set_intellipan_dsp(10, "Color", 0.0, 0.0, [20])
+        self.assertTrue(result.success)
+        write.assert_called_once_with(session, "Color", 0.0, 0.0)
+        deactivate.assert_not_called()
+
     def test_virtual_sink_is_not_shown_as_a_physical_output(self) -> None:
         node = AudioNode(31, "viizeymix_b1", "B1", "Audio/Sink", "", "", "")
         self.assertTrue(node.is_output)

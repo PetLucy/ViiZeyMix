@@ -1,7 +1,7 @@
 project(
   'viizeymix',
   'c',
-  version: '0.7.4',
+  version: '0.8.1',
   default_options: [
     'c_std=gnu17',
     'warning_level=2',

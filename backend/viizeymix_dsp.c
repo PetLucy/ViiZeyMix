@@ -27,6 +27,13 @@ struct dsp_state {
     struct pw_filter *filter;
     struct channel_state channels[CHANNEL_COUNT];
     struct intellipan_dsp_state dsp;
+    _Atomic int gate_enabled;
+    _Atomic float gate_threshold_db;
+    _Atomic float gate_damping_db;
+    _Atomic float gate_sidechain_hz;
+    _Atomic float gate_attack_ms;
+    _Atomic float gate_hold_ms;
+    _Atomic float gate_release_ms;
     _Atomic float color_x;
     _Atomic float color_y;
     _Atomic float modulation_x;
@@ -41,6 +48,13 @@ static void on_process(void *userdata, struct spa_io_position *position)
     const uint32_t sample_count = position->clock.duration;
     const uint32_t sample_rate = position->clock.rate.denom;
     const struct intellipan_controls controls = {
+        .gate_enabled = atomic_load_explicit(&state->gate_enabled, memory_order_relaxed),
+        .gate_threshold_db = atomic_load_explicit(&state->gate_threshold_db, memory_order_relaxed),
+        .gate_damping_db = atomic_load_explicit(&state->gate_damping_db, memory_order_relaxed),
+        .gate_sidechain_hz = atomic_load_explicit(&state->gate_sidechain_hz, memory_order_relaxed),
+        .gate_attack_ms = atomic_load_explicit(&state->gate_attack_ms, memory_order_relaxed),
+        .gate_hold_ms = atomic_load_explicit(&state->gate_hold_ms, memory_order_relaxed),
+        .gate_release_ms = atomic_load_explicit(&state->gate_release_ms, memory_order_relaxed),
         .color_x = atomic_load_explicit(&state->color_x, memory_order_relaxed),
         .color_y = atomic_load_explicit(&state->color_y, memory_order_relaxed),
         .modulation_x = atomic_load_explicit(&state->modulation_x, memory_order_relaxed),
@@ -84,7 +98,23 @@ static void *control_thread(void *userdata)
     while (fgets(line, sizeof(line), stdin) != NULL) {
         float x;
         float y;
-        if (sscanf(line, "color %f %f", &x, &y) == 2) {
+        int enabled;
+        float threshold;
+        float damping;
+        float sidechain;
+        float attack;
+        float hold;
+        float release;
+        if (sscanf(line, "gate %d %f %f %f %f %f %f", &enabled,
+                &threshold, &damping, &sidechain, &attack, &hold, &release) == 7) {
+            atomic_store_explicit(&state->gate_enabled, enabled != 0, memory_order_relaxed);
+            atomic_store_explicit(&state->gate_threshold_db, threshold, memory_order_relaxed);
+            atomic_store_explicit(&state->gate_damping_db, damping, memory_order_relaxed);
+            atomic_store_explicit(&state->gate_sidechain_hz, sidechain, memory_order_relaxed);
+            atomic_store_explicit(&state->gate_attack_ms, attack, memory_order_relaxed);
+            atomic_store_explicit(&state->gate_hold_ms, hold, memory_order_relaxed);
+            atomic_store_explicit(&state->gate_release_ms, release, memory_order_relaxed);
+        } else if (sscanf(line, "color %f %f", &x, &y) == 2) {
             x = fmaxf(-1.0f, fminf(1.0f, x));
             y = fmaxf(-1.0f, fminf(1.0f, y));
             atomic_store_explicit(&state->color_x, x, memory_order_relaxed);
@@ -115,6 +145,20 @@ int main(int argc, char **argv)
     struct dsp_state state = {0};
     pthread_t controls;
 
+    atomic_init(&state.gate_enabled, 0);
+    atomic_init(&state.gate_threshold_db, -45.0f);
+    atomic_init(&state.gate_damping_db, -80.0f);
+    atomic_init(&state.gate_sidechain_hz, 0.0f);
+    atomic_init(&state.gate_attack_ms, 10.0f);
+    atomic_init(&state.gate_hold_ms, 185.0f);
+    atomic_init(&state.gate_release_ms, 1100.0f);
+    atomic_init(&state.color_x, 0.0f);
+    atomic_init(&state.color_y, 0.0f);
+    atomic_init(&state.modulation_x, 0.0f);
+    atomic_init(&state.modulation_y, 0.0f);
+    atomic_init(&state.position_x, 0.0f);
+    atomic_init(&state.position_y, 0.0f);
+
     pw_init(&argc, &argv);
     state.loop = pw_main_loop_new(NULL);
     if (state.loop == NULL) {
@@ -130,7 +174,7 @@ int main(int argc, char **argv)
         node_name,
         pw_properties_new(
             PW_KEY_NODE_NAME, node_name,
-            PW_KEY_NODE_DESCRIPTION, "ViiZeyMix IntelliPan DSP",
+            PW_KEY_NODE_DESCRIPTION, "ViiZeyMix Channel DSP",
             PW_KEY_MEDIA_TYPE, "Audio",
             PW_KEY_MEDIA_CATEGORY, "Filter",
             PW_KEY_MEDIA_ROLE, "DSP",

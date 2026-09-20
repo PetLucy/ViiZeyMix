@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDial,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSlider,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -267,6 +269,193 @@ class IntelliPanControl(QWidget):
         self.effect_changed.emit(mode, x, y, parameters)
 
 
+class GateDial(QDial):
+    details_requested = Signal()
+    reset_requested = Signal()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.RightButton:
+            self.details_requested.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton:
+            self.reset_requested.emit()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+
+class GateDetails(QWidget):
+    changed = Signal(dict)
+
+    SPECS = (
+        ("threshold_db", "THRESHOLD", -60, -10),
+        ("damping_db", "DAMPING MAX", -80, -10),
+        ("sidechain_hz", "BP SIDECHAIN", 0, 3901),
+        ("attack_ms", "ATTACK", 0, 1000),
+        ("hold_ms", "HOLD", 0, 5000),
+        ("release_ms", "RELEASE", 0, 5000),
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.sliders: dict[str, QSlider] = {}
+        self.values: dict[str, QLabel] = {}
+        layout = QGridLayout(self)
+        layout.setContentsMargins(5, 4, 5, 4)
+        layout.setHorizontalSpacing(7)
+        layout.setVerticalSpacing(4)
+        title = QLabel("GATE DETAILS")
+        title.setStyleSheet("font-size: 10px; font-weight: 800; color: #d9cce1;")
+        layout.addWidget(title, 0, 0, 1, 3)
+        hint = QLabel("right-click GATE to return")
+        hint.setObjectName("Subtle")
+        hint.setStyleSheet("font-size: 8px;")
+        hint.setAlignment(Qt.AlignRight)
+        layout.addWidget(hint, 0, 1, 1, 2)
+        for row, (key, label, low, high) in enumerate(self.SPECS, start=1):
+            name = QLabel(label)
+            name.setObjectName("Subtle")
+            name.setStyleSheet("font-size: 8px; font-weight: 700;")
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(low, high)
+            value = QLabel()
+            value.setFixedWidth(54)
+            value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            value.setStyleSheet("font-size: 9px;")
+            self.sliders[key] = slider
+            self.values[key] = value
+            layout.addWidget(name, row, 0)
+            layout.addWidget(slider, row, 1)
+            layout.addWidget(value, row, 2)
+            slider.valueChanged.connect(self._changed)
+
+    def set_state(self, state: dict) -> None:
+        for key, slider in self.sliders.items():
+            slider.blockSignals(True)
+            raw = float(state.get(key, 0.0))
+            slider.setValue(round(raw - 99.0) if key == "sidechain_hz" and raw > 0 else round(raw))
+            slider.blockSignals(False)
+        self._refresh_labels()
+
+    def state(self) -> dict:
+        result = {key: float(slider.value()) for key, slider in self.sliders.items()}
+        sidechain_value = self.sliders["sidechain_hz"].value()
+        result["sidechain_hz"] = 0.0 if sidechain_value == 0 else float(sidechain_value + 99)
+        return result
+
+    def _format(self, key: str, value: float) -> str:
+        if key == "damping_db" and value <= -80.0:
+            return "-∞ dB"
+        if key == "sidechain_hz":
+            return "OFF" if value == 0.0 else f"{value:.0f} Hz"
+        if key in ("threshold_db", "damping_db"):
+            return f"{value:.0f} dB"
+        return f"{value:.0f} ms"
+
+    def _refresh_labels(self) -> None:
+        state = self.state()
+        for key, label in self.values.items():
+            label.setText(self._format(key, state[key]))
+
+    def _changed(self, _value: int) -> None:
+        self._refresh_labels()
+        self.changed.emit(self.state())
+
+
+class GateControl(QFrame):
+    changed = Signal(dict)
+    details_requested = Signal()
+
+    DEFAULTS = {
+        "enabled": False,
+        "programmed": False,
+        "amount": 0.0,
+        "threshold_db": -45.0,
+        "damping_db": -80.0,
+        "sidechain_hz": 0.0,
+        "attack_ms": 10.0,
+        "hold_ms": 185.0,
+        "release_ms": 1100.0,
+    }
+
+    def __init__(self, details: GateDetails) -> None:
+        super().__init__()
+        self._state = dict(self.DEFAULTS)
+        self.details = details
+        self.setStyleSheet("QFrame { background: #1b1521; border: 1px solid #44334f; border-radius: 8px; }")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 5, 10, 5)
+        label = QLabel("GATE")
+        label.setStyleSheet("border: 0; font-size: 10px; font-weight: 800;")
+        layout.addWidget(label)
+        layout.addStretch(1)
+        self.dial = GateDial()
+        self.dial.setRange(0, 100)
+        self.dial.setNotchesVisible(True)
+        self.dial.setFixedSize(54, 54)
+        self.dial.setToolTip(
+            "Gate amount 0-10. Right-click for detailed controls; "
+            "double-click to bypass and reset."
+        )
+        layout.addWidget(self.dial)
+        self.value = QLabel("0.0")
+        self.value.setFixedWidth(34)
+        self.value.setAlignment(Qt.AlignCenter)
+        self.value.setStyleSheet("border: 0; font-size: 10px; font-weight: 700;")
+        layout.addWidget(self.value)
+        self.dial.valueChanged.connect(self._amount_changed)
+        self.dial.details_requested.connect(self.details_requested)
+        self.dial.reset_requested.connect(self.reset)
+        self.details.changed.connect(self._details_changed)
+        self.details.set_state(self._state)
+
+    def state(self) -> dict:
+        return dict(self._state)
+
+    def restore(self, state: dict) -> None:
+        self._state = {**self.DEFAULTS, **state}
+        self.dial.blockSignals(True)
+        self.dial.setValue(round(float(self._state.get("amount", 0.0)) * 10.0))
+        self.dial.blockSignals(False)
+        self.details.set_state(self._state)
+        self._refresh_value()
+
+    def reset(self) -> None:
+        self.restore(self.DEFAULTS)
+        self.changed.emit(self.state())
+
+    def _refresh_value(self) -> None:
+        self.value.setText("PRG" if self._state["programmed"] else f"{self._state['amount']:.1f}")
+
+    def _amount_changed(self, raw: int) -> None:
+        amount = raw / 10.0
+        self._state.update(
+            enabled=amount > 0.0,
+            programmed=False,
+            amount=amount,
+            threshold_db=-60.0 + amount * 5.0,
+            damping_db=-80.0,
+            sidechain_hz=0.0,
+            attack_ms=10.0,
+            hold_ms=185.0,
+            release_ms=1100.0,
+        )
+        self.details.set_state(self._state)
+        self._refresh_value()
+        self.changed.emit(self.state())
+
+    def _details_changed(self, parameters: dict) -> None:
+        self._state.update(parameters)
+        self._state["enabled"] = True
+        self._state["programmed"] = True
+        self._refresh_value()
+        self.changed.emit(self.state())
+
+
 class VerticalMeter(QWidget):
     def __init__(self) -> None:
         super().__init__()
@@ -324,11 +513,6 @@ class ChannelStrip(QFrame):
             self.intellipan = IntelliPanControl()
             self.intellipan.effect_changed.connect(self.on_effect_changed)
             layout.addWidget(self.intellipan)
-            self.effect_status = QLabel("Color • Modulation • Position: live DSP")
-            self.effect_status.setObjectName("Subtle")
-            self.effect_status.setAlignment(Qt.AlignCenter)
-            self.effect_status.setStyleSheet("font-size: 9px;")
-            layout.addWidget(self.effect_status)
 
         center = QHBoxLayout()
         center.setAlignment(Qt.AlignCenter)
@@ -371,6 +555,26 @@ class ChannelStrip(QFrame):
         gain_row.addWidget(self.gain_label)
         layout.addLayout(gain_row)
 
+        if with_intellipan:
+            gate_row = QHBoxLayout()
+            gate_title = QLabel("GATE")
+            gate_title.setObjectName("Subtle")
+            gate_title.setStyleSheet("font-size: 9px; font-weight: 700;")
+            gate_row.addWidget(gate_title)
+            self.gate_slider = QSlider(Qt.Horizontal)
+            self.gate_slider.setRange(0, 100)
+            self.gate_slider.setValue(0)
+            self.gate_slider.setToolTip(
+                "Noise gate strength: 0 disables the gate; 10 is the strongest setting"
+            )
+            gate_row.addWidget(self.gate_slider, 1)
+            self.gate_label = QLabel("0.0")
+            self.gate_label.setFixedWidth(53)
+            self.gate_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            gate_row.addWidget(self.gate_label)
+            layout.addLayout(gate_row)
+            self.gate_slider.valueChanged.connect(self.on_gate_changed)
+
         self.slider.valueChanged.connect(self.on_volume)
         self.gain_slider.valueChanged.connect(self.on_gain)
         self.mute = QPushButton("MUTE")
@@ -402,27 +606,33 @@ class ChannelStrip(QFrame):
 
     def on_effect_changed(self, mode: str, x: float, y: float, parameters: dict) -> None:
         self.backend.set_intellipan_state(self.node.id, mode, x, y, parameters)
-        result = self.backend.set_intellipan_dsp(
+        self.backend.set_intellipan_dsp(
             self.node.id,
             mode,
             x,
             y,
             list(self.routed_targets.values()),
         )
-        if result.success:
-            active_modes = [
-                effect_mode
-                for effect_mode, state in self.backend.intellipan_state.get(self.node.id, {}).items()
-                if abs(float(state.get("x", 0.0))) > 0.001 or
-                abs(float(state.get("y", 0.0))) > 0.001
-            ]
-            self.effect_status.setText(
-                "DSP: " + " + ".join(active_modes)
-                if active_modes
-                else "IntelliPan DSP: bypassed"
-            )
-        else:
-            self.effect_status.setText("IntelliPan DSP: unavailable")
+    def on_gate_changed(self, value: int) -> None:
+        amount = value / 10.0
+        self.gate_label.setText(f"{amount:.1f}")
+        state = {
+            "enabled": amount > 0.0,
+            "programmed": False,
+            "amount": amount,
+            "threshold_db": -60.0 + amount * 5.0,
+            "damping_db": -80.0,
+            "sidechain_hz": 0.0,
+            "attack_ms": 10.0,
+            "hold_ms": 185.0,
+            "release_ms": 1100.0,
+        }
+        self.backend.set_gate_state(self.node.id, state)
+        self.backend.set_gate_dsp(
+            self.node.id,
+            list(self.routed_targets.values()),
+        )
+
     def set_bus_targets(self, targets: dict[str, AudioNode | None]) -> None:
         if not hasattr(self, "route_buttons"):
             return
@@ -446,14 +656,15 @@ class ChannelStrip(QFrame):
                 )
         self.intellipan.pad.update()
         self.intellipan.readout.setText(self.intellipan.pad.summary())
-        active_modes = [
-            mode
-            for mode, state in states.items()
-            if abs(float(state.get("x", 0.0))) > 0.001 or
-            abs(float(state.get("y", 0.0))) > 0.001
-        ]
-        if active_modes:
-            self.effect_status.setText("DSP: " + " + ".join(active_modes))
+
+    def restore_gate_state(self, state: dict) -> None:
+        if not hasattr(self, "gate_slider") or not state:
+            return
+        amount = max(0.0, min(float(state.get("amount", 0.0)), 10.0))
+        self.gate_slider.blockSignals(True)
+        self.gate_slider.setValue(round(amount * 10.0))
+        self.gate_slider.blockSignals(False)
+        self.gate_label.setText(f"{amount:.1f}")
 
     def clear_route(self, code: str) -> None:
         if not hasattr(self, "route_buttons"):
@@ -712,6 +923,7 @@ class MainWindow(QMainWindow):
                 meter_target=node,
             )
             strip.restore_intellipan_state(self.backend.intellipan_state.get(node.id, {}))
+            strip.restore_gate_state(self.backend.gate_state.get(node.id, {}))
             strip.route_requested.connect(self.on_route_requested)
             self.inputs_layout.addWidget(strip)
             self.channel_strips.append(strip)

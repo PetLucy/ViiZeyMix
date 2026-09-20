@@ -56,6 +56,82 @@ static int color_changes_the_signal(void)
     return changed;
 }
 
+static int gate_attenuates_quiet_audio(void)
+{
+    enum { SAMPLE_COUNT = 4800 };
+    float input[SAMPLE_COUNT];
+    float left[SAMPLE_COUNT] = {0};
+    float right[SAMPLE_COUNT] = {0};
+    struct intellipan_controls controls = {
+        .gate_enabled = 1,
+        .gate_threshold_db = -30.0f,
+        .gate_damping_db = -80.0f,
+        .gate_attack_ms = 10.0f,
+        .gate_hold_ms = 0.0f,
+        .gate_release_ms = 20.0f,
+    };
+    struct intellipan_dsp_state *state = calloc(1, sizeof(*state));
+    if (state == NULL)
+        return 0;
+    for (size_t index = 0; index < SAMPLE_COUNT; ++index)
+        input[index] = 0.001f;
+    intellipan_dsp_process(left, right, input, input, SAMPLE_COUNT, TEST_RATE, &controls, state);
+    const int passed = fabsf(left[SAMPLE_COUNT - 1]) < 0.00005f &&
+        fabsf(right[SAMPLE_COUNT - 1]) < 0.00005f;
+    free(state);
+    return passed;
+}
+
+static int gate_opens_for_loud_audio(void)
+{
+    enum { SAMPLE_COUNT = 4800 };
+    float input[SAMPLE_COUNT];
+    float left[SAMPLE_COUNT] = {0};
+    float right[SAMPLE_COUNT] = {0};
+    struct intellipan_controls controls = {
+        .gate_enabled = 1,
+        .gate_threshold_db = -30.0f,
+        .gate_damping_db = -80.0f,
+        .gate_attack_ms = 5.0f,
+        .gate_hold_ms = 185.0f,
+        .gate_release_ms = 1100.0f,
+    };
+    struct intellipan_dsp_state *state = calloc(1, sizeof(*state));
+    if (state == NULL)
+        return 0;
+    for (size_t index = 0; index < SAMPLE_COUNT; ++index)
+        input[index] = 0.2f;
+    intellipan_dsp_process(left, right, input, input, SAMPLE_COUNT, TEST_RATE, &controls, state);
+    const int passed = left[SAMPLE_COUNT - 1] > 0.19f && right[SAMPLE_COUNT - 1] > 0.19f;
+    free(state);
+    return passed;
+}
+
+static int gate_honors_damping_floor(void)
+{
+    enum { SAMPLE_COUNT = 500 };
+    float input[SAMPLE_COUNT];
+    float left[SAMPLE_COUNT] = {0};
+    float right[SAMPLE_COUNT] = {0};
+    struct intellipan_controls controls = {
+        .gate_enabled = 1,
+        .gate_threshold_db = -20.0f,
+        .gate_damping_db = -20.0f,
+        .gate_attack_ms = 0.0f,
+        .gate_hold_ms = 0.0f,
+        .gate_release_ms = 0.0f,
+    };
+    struct intellipan_dsp_state *state = calloc(1, sizeof(*state));
+    if (state == NULL)
+        return 0;
+    for (size_t index = 0; index < SAMPLE_COUNT; ++index)
+        input[index] = 0.01f;
+    intellipan_dsp_process(left, right, input, input, SAMPLE_COUNT, TEST_RATE, &controls, state);
+    const int passed = fabsf(left[SAMPLE_COUNT - 1] - 0.001f) < 0.00005f;
+    free(state);
+    return passed;
+}
+
 static int modulation_changes_and_stays_bounded(void)
 {
     enum { SAMPLE_COUNT = 24000 };
@@ -179,6 +255,18 @@ int main(void)
     }
     if (!color_changes_the_signal()) {
         fputs("active Color did not change the signal\n", stderr);
+        return 1;
+    }
+    if (!gate_attenuates_quiet_audio()) {
+        fputs("Gate did not attenuate quiet audio\n", stderr);
+        return 1;
+    }
+    if (!gate_opens_for_loud_audio()) {
+        fputs("Gate did not open for loud audio\n", stderr);
+        return 1;
+    }
+    if (!gate_honors_damping_floor()) {
+        fputs("Gate did not honor its damping floor\n", stderr);
         return 1;
     }
     if (!modulation_changes_and_stays_bounded()) {

@@ -23,9 +23,106 @@ static int point_active(float x, float y)
 
 int intellipan_controls_active(const struct intellipan_controls *controls)
 {
-    return point_active(controls->color_x, controls->color_y) ||
+    return controls->gate_enabled ||
+        point_active(controls->color_x, controls->color_y) ||
         point_active(controls->modulation_x, controls->modulation_y) ||
         point_active(controls->position_x, controls->position_y);
+}
+
+static float db_to_linear(float db)
+{
+    if (db <= -80.0f)
+        return 0.0f;
+    return powf(10.0f, db / 20.0f);
+}
+
+static float time_coefficient(float milliseconds, uint32_t sample_rate)
+{
+    if (milliseconds <= 0.0f)
+        return 1.0f;
+    return 1.0f - expf(-1.0f / (milliseconds * 0.001f * (float)sample_rate));
+}
+
+static float gate_detector_sample(
+    float sample,
+    float center_hz,
+    uint32_t sample_rate,
+    size_t channel,
+    struct intellipan_dsp_state *state)
+{
+    if (center_hz < 1.0f)
+        return sample;
+
+    const float center = clampf(center_hz, 100.0f, 4000.0f);
+    const float half_band = 1.681793f;
+    const float low_cut = center / half_band;
+    const float high_cut = center * half_band;
+    const float low_alpha = 1.0f - expf(-2.0f * PI_F * low_cut / (float)sample_rate);
+    const float high_alpha = 1.0f - expf(-2.0f * PI_F * high_cut / (float)sample_rate);
+
+    state->gate_sidechain_low[channel] +=
+        low_alpha * (sample - state->gate_sidechain_low[channel]);
+    const float high_passed = sample - state->gate_sidechain_low[channel];
+    state->gate_sidechain_high[channel] +=
+        high_alpha * (high_passed - state->gate_sidechain_high[channel]);
+    return state->gate_sidechain_high[channel];
+}
+
+static float process_gate(
+    float left,
+    float right,
+    uint32_t sample_rate,
+    const struct intellipan_controls *controls,
+    struct intellipan_dsp_state *state,
+    float *output_left,
+    float *output_right)
+{
+    if (!controls->gate_enabled) {
+        state->gate_was_enabled = 0;
+        *output_left = left;
+        *output_right = right;
+        return 1.0f;
+    }
+
+    if (!state->gate_was_enabled) {
+        state->gate_gain = 0.0f;
+        state->gate_detector_envelope = 0.0f;
+        state->gate_hold_remaining = 0;
+        state->gate_was_enabled = 1;
+    }
+
+    const float detector_left = gate_detector_sample(
+        left, controls->gate_sidechain_hz, sample_rate, 0, state);
+    const float detector_right = gate_detector_sample(
+        right, controls->gate_sidechain_hz, sample_rate, 1, state);
+    const float detector = fmaxf(fabsf(detector_left), fabsf(detector_right));
+    const float detector_attack = time_coefficient(2.0f, sample_rate);
+    const float detector_release = time_coefficient(40.0f, sample_rate);
+    const float detector_coefficient =
+        detector > state->gate_detector_envelope ? detector_attack : detector_release;
+    state->gate_detector_envelope += detector_coefficient *
+        (detector - state->gate_detector_envelope);
+
+    const float threshold = db_to_linear(clampf(controls->gate_threshold_db, -60.0f, -10.0f));
+    const uint32_t hold_samples = (uint32_t)(
+        clampf(controls->gate_hold_ms, 0.0f, 5000.0f) * 0.001f * (float)sample_rate);
+    int open = state->gate_detector_envelope >= threshold;
+    if (open)
+        state->gate_hold_remaining = hold_samples;
+    else if (state->gate_hold_remaining > 0) {
+        state->gate_hold_remaining--;
+        open = 1;
+    }
+
+    const float floor_gain = db_to_linear(clampf(controls->gate_damping_db, -80.0f, -10.0f));
+    const float target_gain = open ? 1.0f : floor_gain;
+    const float coefficient = target_gain > state->gate_gain
+        ? time_coefficient(clampf(controls->gate_attack_ms, 0.0f, 1000.0f), sample_rate)
+        : time_coefficient(clampf(controls->gate_release_ms, 0.0f, 5000.0f), sample_rate);
+    state->gate_gain += coefficient * (target_gain - state->gate_gain);
+    *output_left = left * state->gate_gain;
+    *output_right = right * state->gate_gain;
+    return state->gate_gain;
 }
 
 static float process_color(
@@ -240,13 +337,23 @@ void intellipan_dsp_process(
     for (uint32_t index = 0; index < sample_count; ++index) {
         const float source_left = input_left == NULL ? 0.0f : input_left[index];
         const float source_right = input_right == NULL ? 0.0f : input_right[index];
-        float left = process_color(
+        float gated_left;
+        float gated_right;
+        process_gate(
             source_left,
+            source_right,
+            sample_rate,
+            controls,
+            state,
+            &gated_left,
+            &gated_right);
+        float left = process_color(
+            gated_left,
             controls->color_x,
             controls->color_y,
             &state->channels[0]);
         float right = process_color(
-            source_right,
+            gated_right,
             controls->color_x,
             controls->color_y,
             &state->channels[1]);

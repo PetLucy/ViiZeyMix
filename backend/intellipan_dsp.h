@@ -9,6 +9,13 @@
 #define IP_ROOM_DELAY_SAMPLES 8192
 
 struct intellipan_controls {
+    int gate_enabled;
+    float gate_threshold_db;
+    float gate_damping_db;
+    float gate_sidechain_hz;
+    float gate_attack_ms;
+    float gate_hold_ms;
+    float gate_release_ms;
     float color_x;
     float color_y;
     float modulation_x;
@@ -35,6 +42,12 @@ struct intellipan_channel_state {
 
 struct intellipan_dsp_state {
     struct intellipan_channel_state channels[2];
+    float gate_gain;
+    float gate_detector_envelope;
+    float gate_sidechain_low[2];
+    float gate_sidechain_high[2];
+    uint32_t gate_hold_remaining;
+    int gate_was_enabled;
     uint32_t position_delay_pos;
     uint32_t room_delay_pos;
     float modulation_phase;

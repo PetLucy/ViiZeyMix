@@ -8,7 +8,7 @@
   <description>
     <p>ViiZeyMix combines PipeWire device discovery, source-to-bus routing,
     virtual mix buses, live meters, volume and gain controls, and native
-    IntelliPan processing in one mixer interface.</p>
+    IntelliPan processing and a native noise gate in one mixer interface.</p>
   </description>
   <launchable type="desktop-id">io.github.petlucy.viizeymix.desktop</launchable>
   <url type="homepage">https://github.com/PetLucy/ViiZeyMix</url>
@@ -17,6 +17,16 @@
     <binary>viizeymix</binary>
   </provides>
   <releases>
+    <release version="0.8.1" date="2026-09-20">
+      <description>
+        <p>Moves the noise gate to a compact horizontal control below Gain.</p>
+      </description>
+    </release>
+    <release version="0.8.0" date="2026-09-20">
+      <description>
+        <p>Adds a stereo-linked noise gate with simple and detailed VoiceMeeter-style controls.</p>
+      </description>
+    </release>
     <release version="0.7.4" date="2026-09-20">
       <description>
         <p>Adds selectable B1-B3 capture devices backed by the virtual mix bus monitors.</p>

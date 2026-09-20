@@ -126,6 +126,7 @@ class PipeWireBackend:
         self.dsp_binary = self.resolve_helper("viizeymix-dsp")
         self.last_discovery_error: str | None = None
         self.intellipan_state: dict[int, dict] = {}
+        self.gate_state: dict[int, dict] = {}
         self.dsp_sessions: dict[int, DspSession] = {}
         self.meter_sessions: dict[int, MeterSession] = {}
         config_root = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
@@ -603,6 +604,78 @@ class PipeWireBackend:
             for state in self.intellipan_state.get(source_node_id, {}).values()
         )
 
+    def gate_is_active(self, source_node_id: int) -> bool:
+        return bool(self.gate_state.get(source_node_id, {}).get("enabled", False))
+
+    def processing_is_active(self, source_node_id: int) -> bool:
+        return self.intellipan_is_active(source_node_id) or self.gate_is_active(source_node_id)
+
+    def write_gate_control(self, session: DspSession, state: dict) -> RoutingResult:
+        if session.process.stdin is None or session.process.poll() is not None:
+            return RoutingResult(False, "Channel DSP process stopped unexpectedly")
+        values = (
+            1 if state.get("enabled", False) else 0,
+            float(state.get("threshold_db", -45.0)),
+            float(state.get("damping_db", -80.0)),
+            float(state.get("sidechain_hz", 0.0)),
+            float(state.get("attack_ms", 10.0)),
+            float(state.get("hold_ms", 185.0)),
+            float(state.get("release_ms", 1100.0)),
+        )
+        try:
+            session.process.stdin.write(
+                "gate %d %.3f %.3f %.3f %.3f %.3f %.3f\n" % values
+            )
+            session.process.stdin.flush()
+        except (BrokenPipeError, OSError) as error:
+            return RoutingResult(False, f"Could not update Gate DSP: {error}")
+        return RoutingResult(True, "Gate DSP updated")
+
+    def _activate_channel_dsp(
+        self,
+        source_node_id: int,
+        routed_target_ids: list[int],
+    ) -> tuple[DspSession | None, RoutingResult, bool]:
+        existing = self.dsp_sessions.get(source_node_id)
+        if existing is not None and existing.process.poll() is not None:
+            self.dsp_sessions.pop(source_node_id, None)
+            existing = None
+
+        if not self.processing_is_active(source_node_id):
+            if existing is None:
+                return None, RoutingResult(True, "Channel DSP is bypassed"), False
+            result = self.deactivate_intellipan_dsp(source_node_id, routed_target_ids)
+            return None, result, False
+
+        session, result = self.ensure_intellipan_dsp(source_node_id)
+        if not result.success or session is None:
+            return session, result, False
+        created = existing is None
+        if not created:
+            return session, result, False
+
+        for target_id in routed_target_ids:
+            filtered = self._set_route_direct(session.node_id, target_id, True)
+            if not filtered.success:
+                return session, filtered, True
+            direct = self._set_route_direct(source_node_id, target_id, False)
+            if not direct.success:
+                return session, direct, True
+
+        for saved_mode, state in self.intellipan_state.get(source_node_id, {}).items():
+            control_result = self.write_intellipan_control(
+                session,
+                saved_mode,
+                float(state.get("x", 0.0)),
+                float(state.get("y", 0.0)),
+            )
+            if not control_result.success:
+                return session, control_result, True
+        gate_result = self.write_gate_control(session, self.gate_state.get(source_node_id, {}))
+        if not gate_result.success:
+            return session, gate_result, True
+        return session, RoutingResult(True, "Channel DSP activated"), True
+
     def set_intellipan_dsp(
         self,
         source_node_id: int,
@@ -611,41 +684,28 @@ class PipeWireBackend:
         y: float,
         routed_target_ids: list[int],
     ) -> RoutingResult:
-        existing = self.dsp_sessions.get(source_node_id)
-        if existing is not None and existing.process.poll() is not None:
-            self.dsp_sessions.pop(source_node_id, None)
-            existing = None
-
-        if not self.intellipan_is_active(source_node_id):
-            if existing is None:
-                return RoutingResult(True, "IntelliPan is neutral")
-            return self.deactivate_intellipan_dsp(source_node_id, routed_target_ids)
-
-        session, result = self.ensure_intellipan_dsp(source_node_id)
+        session, result, created = self._activate_channel_dsp(
+            source_node_id, routed_target_ids
+        )
         if not result.success or session is None:
             return result
-
-        if existing is None:
-            for target_id in routed_target_ids:
-                filtered = self._set_route_direct(session.node_id, target_id, True)
-                if not filtered.success:
-                    return filtered
-                direct = self._set_route_direct(source_node_id, target_id, False)
-                if not direct.success:
-                    return direct
-
-            for saved_mode, state in self.intellipan_state.get(source_node_id, {}).items():
-                control_result = self.write_intellipan_control(
-                    session,
-                    saved_mode,
-                    float(state.get("x", 0.0)),
-                    float(state.get("y", 0.0)),
-                )
-                if not control_result.success:
-                    return control_result
-            return RoutingResult(True, "IntelliPan DSP activated")
-
+        if created:
+            return result
         return self.write_intellipan_control(session, mode, x, y)
+
+    def set_gate_dsp(
+        self,
+        source_node_id: int,
+        routed_target_ids: list[int],
+    ) -> RoutingResult:
+        session, result, created = self._activate_channel_dsp(
+            source_node_id, routed_target_ids
+        )
+        if not result.success or session is None:
+            return result
+        if created:
+            return result
+        return self.write_gate_control(session, self.gate_state.get(source_node_id, {}))
 
     def deactivate_intellipan_dsp(
         self,
@@ -855,6 +915,19 @@ class PipeWireBackend:
             "x": float(x),
             "y": float(y),
             "parameters": dict(parameters),
+        }
+
+    def set_gate_state(self, node_id: int, state: dict) -> None:
+        self.gate_state[node_id] = {
+            "enabled": bool(state.get("enabled", False)),
+            "programmed": bool(state.get("programmed", False)),
+            "amount": max(0.0, min(float(state.get("amount", 0.0)), 10.0)),
+            "threshold_db": max(-60.0, min(float(state.get("threshold_db", -45.0)), -10.0)),
+            "damping_db": max(-80.0, min(float(state.get("damping_db", -80.0)), -10.0)),
+            "sidechain_hz": max(0.0, min(float(state.get("sidechain_hz", 0.0)), 4000.0)),
+            "attack_ms": max(0.0, min(float(state.get("attack_ms", 10.0)), 1000.0)),
+            "hold_ms": max(0.0, min(float(state.get("hold_ms", 185.0)), 5000.0)),
+            "release_ms": max(0.0, min(float(state.get("release_ms", 1100.0)), 5000.0)),
         }
 
     @staticmethod
