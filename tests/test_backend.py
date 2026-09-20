@@ -168,6 +168,83 @@ class RoutingTests(TestCase):
         self.assertTrue(node.is_viizeymix_bus)
         self.assertEqual(node.virtual_bus_code, "B1")
 
+    def test_virtual_bus_source_is_identified_as_part_of_the_bus(self) -> None:
+        node = AudioNode(
+            32,
+            "viizeymix_b1_source",
+            "B1",
+            "Audio/Source",
+            "",
+            "",
+            "",
+        )
+        self.assertFalse(node.is_output)
+        self.assertTrue(node.is_viizeymix_bus)
+        self.assertEqual(node.virtual_bus_code, "B1")
+
+    @patch("audio_backend.shutil.which", return_value="/usr/bin/pactl")
+    @patch("audio_backend.subprocess.run")
+    def test_virtual_buses_publish_selectable_capture_sources(self, run, _which) -> None:
+        self.backend.backend_binary = Path(sys.executable)
+        run.side_effect = [
+            MagicMock(
+                stdout=(
+                    "40\tviizeymix_b1\tPipeWire\n"
+                    "41\tviizeymix_b2\tPipeWire\n"
+                    "42\tviizeymix_b3\tPipeWire\n"
+                )
+            ),
+            MagicMock(stdout="40\tviizeymix_b1.monitor\tPipeWire\n"),
+            MagicMock(stdout="100\n"),
+            MagicMock(stdout="101\n"),
+            MagicMock(stdout="102\n"),
+        ]
+
+        self.assertEqual(self.backend.ensure_virtual_buses(), [])
+        commands = [item.args[0] for item in run.call_args_list]
+        self.assertEqual(commands[0], ["pactl", "list", "short", "sinks"])
+        self.assertEqual(commands[1], ["pactl", "list", "short", "sources"])
+        self.assertEqual(
+            commands[2],
+            [
+                "pactl",
+                "load-module",
+                "module-remap-source",
+                "master=viizeymix_b1.monitor",
+                "source_name=viizeymix_b1_source",
+                "source_properties=device.description=ViiZeyMix-B1-Stream-Mix",
+                "channels=2",
+                "channel_map=front-left,front-right",
+                "master_channel_map=front-left,front-right",
+                "remix=no",
+            ],
+        )
+        self.assertEqual(len(commands), 5)
+
+    @patch("audio_backend.shutil.which", return_value="/usr/bin/pactl")
+    @patch("audio_backend.subprocess.run")
+    def test_existing_virtual_capture_sources_are_not_duplicated(self, run, _which) -> None:
+        self.backend.backend_binary = Path(sys.executable)
+        run.side_effect = [
+            MagicMock(
+                stdout=(
+                    "40\tviizeymix_b1\tPipeWire\n"
+                    "41\tviizeymix_b2\tPipeWire\n"
+                    "42\tviizeymix_b3\tPipeWire\n"
+                )
+            ),
+            MagicMock(
+                stdout=(
+                    "50\tviizeymix_b1_source\tPipeWire\n"
+                    "51\tviizeymix_b2_source\tPipeWire\n"
+                    "52\tviizeymix_b3_source\tPipeWire\n"
+                )
+            ),
+        ]
+
+        self.assertEqual(self.backend.ensure_virtual_buses(), [])
+        self.assertEqual(run.call_count, 2)
+
     def test_sink_monitor_is_identified_for_real_output_metering(self) -> None:
         node = AudioNode(
             32,

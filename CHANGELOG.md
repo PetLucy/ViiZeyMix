@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.4 - 2026-09-20
+
+- Added selectable B1, B2, and B3 capture devices for Discord, VRChat, OBS,
+  and other applications.
+- Backed each virtual capture device with its B bus monitor so routed audio is
+  available without manual Helvum connections.
+- Hid the new ViiZeyMix helper sources from the Inputs & Sources tab.
+
 ## 0.7.3 - 2026-09-18
 
 - Moved native PipeWire helpers out of PyInstaller's private `_internal`

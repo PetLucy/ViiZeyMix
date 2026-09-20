@@ -19,6 +19,11 @@ VIRTUAL_BUSES = {
     "B3": ("viizeymix_b3", "ViiZeyMix-B3-Record-Mix"),
 }
 
+VIRTUAL_BUS_SOURCES = {
+    code: (f"{sink_name}_source", description)
+    for code, (sink_name, description) in VIRTUAL_BUSES.items()
+}
+
 
 @dataclass(frozen=True)
 class AudioNode:
@@ -230,7 +235,7 @@ class PipeWireBackend:
         return nodes
 
     def ensure_virtual_buses(self) -> list[str]:
-        """Create B1-B3 as PipeWire-Pulse null sinks when they are absent."""
+        """Create B1-B3 playback sinks and app-selectable capture sources."""
         if not self.backend_binary.exists():
             return []
         if shutil.which("pactl") is None:
@@ -274,6 +279,49 @@ class PipeWireBackend:
                 )
             except (OSError, subprocess.SubprocessError) as error:
                 errors.append(f"{code} creation failed: {error}")
+
+        try:
+            source_listing = subprocess.run(
+                ["pactl", "list", "short", "sources"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=True,
+            ).stdout
+        except (OSError, subprocess.SubprocessError) as error:
+            errors.append(f"Could not inspect virtual bus inputs: {error}")
+            return errors
+
+        existing_sources = {
+            fields[1]
+            for line in source_listing.splitlines()
+            if len(fields := line.split()) >= 2
+        }
+        for code, (source_name, description) in VIRTUAL_BUS_SOURCES.items():
+            if source_name in existing_sources:
+                continue
+            sink_name = VIRTUAL_BUSES[code][0]
+            try:
+                subprocess.run(
+                    [
+                        "pactl",
+                        "load-module",
+                        "module-remap-source",
+                        f"master={sink_name}.monitor",
+                        f"source_name={source_name}",
+                        f"source_properties=device.description={description}",
+                        "channels=2",
+                        "channel_map=front-left,front-right",
+                        "master_channel_map=front-left,front-right",
+                        "remix=no",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=4,
+                    check=True,
+                )
+            except (OSError, subprocess.SubprocessError) as error:
+                errors.append(f"{code} input creation failed: {error}")
         return errors
 
     def load_bus_assignments(self) -> dict[str, str]:

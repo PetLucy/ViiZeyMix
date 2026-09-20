@@ -672,6 +672,7 @@ class MainWindow(QMainWindow):
                 n
                 for n in nodes
                 if n.is_input_or_source
+                and not n.is_viizeymix_bus
                 and not n.is_viizeymix_dsp
                 and not n.is_viizeymix_meter
                 and not n.is_monitor
