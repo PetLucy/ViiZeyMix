@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase, main
 from unittest.mock import MagicMock, call, patch
+import json
 import os
 import struct
 import sys
@@ -96,6 +97,19 @@ class RoutingTests(TestCase):
             result = self.backend.set_route(10, 20, True)
         self.assertTrue(result.success)
         direct.assert_called_once_with(30, 20, True)
+
+    def test_application_playback_stream_is_an_input_source(self) -> None:
+        node = AudioNode(
+            42,
+            "Firefox",
+            "Firefox",
+            "Stream/Output/Audio",
+            "Firefox",
+            "firefox",
+            "AudioStream",
+        )
+        self.assertTrue(node.is_input_or_source)
+        self.assertFalse(node.is_output)
 
     def test_enabling_intellipan_migrates_existing_routes_through_filter(self) -> None:
         process = MagicMock()
@@ -335,6 +349,52 @@ class RoutingTests(TestCase):
         level = self.backend.read_meter_level(42)
         self.assertIsNotNone(level)
         self.assertAlmostEqual(level, 0.8997, places=3)
+
+    @patch("audio_backend.os.set_blocking")
+    @patch("audio_backend.subprocess.Popen")
+    @patch("audio_backend.shutil.which", return_value="/usr/bin/pw-cat")
+    def test_meter_links_unique_source_to_non_autoconnecting_meter(
+        self, _which, popen, _set_blocking
+    ) -> None:
+        process = MagicMock()
+        process.poll.return_value = None
+        process.stdout.fileno.return_value = 77
+        popen.return_value = process
+        node = AudioNode(
+            272,
+            "Firefox",
+            "",
+            "Stream/Output/Audio",
+            "Firefox",
+            "firefox",
+            "AudioStream",
+        )
+
+        meter_state = [
+            {
+                "id": 900,
+                "type": "PipeWire:Interface:Node",
+                "info": {"props": {"node.name": "viizeymix_meter_272"}},
+            },
+            port(901, 900, "in", "FL"),
+            port(902, 900, "in", "FR"),
+        ]
+        with (
+            patch.object(self.backend, "graph_state", return_value=meter_state),
+            patch.object(
+                self.backend,
+                "_set_route_direct",
+                return_value=RoutingResult(True, "linked", 2),
+            ) as direct,
+        ):
+            self.assertTrue(self.backend.start_meter(node))
+
+        command = popen.call_args.args[0]
+        self.assertNotIn("--target", command)
+        properties = json.loads(command[command.index("--properties") + 1])
+        self.assertFalse(properties["node.autoconnect"])
+        self.assertEqual(properties["node.name"], "viizeymix_meter_272")
+        direct.assert_called_once_with(272, 900, True)
 
     def test_hardware_bus_assignments_persist_by_stable_node_name(self) -> None:
         with TemporaryDirectory() as directory:

@@ -761,15 +761,14 @@ class PipeWireBackend:
         self.stop_meter(node.id)
 
         pw_cat = shutil.which("pw-cat") or shutil.which("pw-record")
-        if pw_cat is None or not node.name:
+        if pw_cat is None:
             return False
+        meter_name = f"viizeymix_meter_{node.id}"
         command = [pw_cat]
         if Path(pw_cat).name != "pw-record":
             command.append("--record")
         command.extend(
             [
-                "--target",
-                node.name,
                 "--raw",
                 "--format",
                 "f32",
@@ -784,9 +783,10 @@ class PipeWireBackend:
                 "--properties",
                 json.dumps(
                     {
-                        "node.name": f"viizeymix_meter_{node.id}",
+                        "node.name": meter_name,
                         "application.name": "ViiZeyMix Meter",
                         "node.passive": True,
+                        "node.autoconnect": False,
                     },
                     separators=(",", ":"),
                 ),
@@ -806,6 +806,30 @@ class PipeWireBackend:
                 return False
             os.set_blocking(process.stdout.fileno(), False)
         except OSError:
+            return False
+
+        meter_node_id: int | None = None
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                break
+            try:
+                state = self.graph_state()
+                candidate = self.node_id_by_name(state, meter_name)
+                if candidate is not None and self.ports_for_node(state, candidate, "in"):
+                    meter_node_id = candidate
+                    break
+            except RuntimeError:
+                pass
+            time.sleep(0.025)
+
+        if meter_node_id is None:
+            process.terminate()
+            return False
+
+        link_result = self._set_route_direct(node.id, meter_node_id, True)
+        if not link_result.success:
+            process.terminate()
             return False
         self.meter_sessions[node.id] = MeterSession(process=process)
         return True

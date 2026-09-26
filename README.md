@@ -3,9 +3,9 @@
 ViiZeyMix is a VoiceMeeter-style mixer for Linux built around PipeWire,
 PySide6, and native C audio helpers.
 
-Version 0.8.1 adds a native stereo-linked noise gate with a compact 0-10 slider
-below the Gain control. An Arch/AUR package and a portable AppImage are
-available.
+Version 0.8.2 automatically discovers application playback streams such as
+Firefox and removes the previous device display limits. An Arch/AUR package
+and a portable AppImage are available.
 
 ## Installation
 
@@ -20,6 +20,7 @@ available.
 ## Current features
 
 - PipeWire hardware, microphone, and application-stream discovery
+- automatic appearance and removal of application playback streams
 - separate Inputs & Sources and Outputs & Buses views
 - A1-A3 hardware output assignments
 - B1-B3 virtual Stream, Chat, and Record mix buses

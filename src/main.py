@@ -800,6 +800,7 @@ class MainWindow(QMainWindow):
         self.discovery_error_shown = False
         self.channel_strips: list[ChannelStrip] = []
         self.input_strips: list[ChannelStrip] = []
+        self.node_signature: tuple = ()
         self.bus_targets: dict[str, AudioNode | None] = {
             code: None for code in ("A1", "A2", "A3", "B1", "B2", "B3")
         }
@@ -825,7 +826,7 @@ class MainWindow(QMainWindow):
         top_layout.addLayout(title_wrap)
         top_layout.addStretch(1)
         refresh = QPushButton("Refresh devices")
-        refresh.clicked.connect(self.load_nodes)
+        refresh.clicked.connect(lambda: self.load_nodes())
         top_layout.addWidget(refresh)
         root_layout.addWidget(top)
 
@@ -842,6 +843,9 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.update_meters)
         self.timer.start(100)
         self.load_nodes()
+        self.discovery_timer = QTimer(self)
+        self.discovery_timer.timeout.connect(self.poll_nodes)
+        self.discovery_timer.start(2000)
 
     def show_error(self, message: str) -> None:
         QMessageBox.warning(self, "ViiZeyMix", message)
@@ -854,7 +858,38 @@ class MainWindow(QMainWindow):
             if widget:
                 widget.deleteLater()
 
-    def load_nodes(self) -> None:
+    @staticmethod
+    def discovery_signature(nodes: list[AudioNode]) -> tuple:
+        visible = (
+            node
+            for node in nodes
+            if not node.is_viizeymix_dsp
+            and not node.is_viizeymix_meter
+            and not node.is_monitor
+            and (node.is_output or not node.is_viizeymix_bus)
+        )
+        return tuple(sorted(
+            (
+                node.id,
+                node.name,
+                node.media_class,
+                node.application_name,
+                node.media_name,
+            )
+            for node in visible
+        ))
+
+    def poll_nodes(self) -> None:
+        if QApplication.mouseButtons() != Qt.NoButton:
+            return
+        nodes = self.backend.enumerate_nodes()
+        if self.backend.last_discovery_error:
+            return
+        signature = self.discovery_signature(nodes)
+        if signature != self.node_signature:
+            self.load_nodes(nodes)
+
+    def load_nodes(self, discovered_nodes: list[AudioNode] | None = None) -> None:
         previous_names = {
             code: target.name
             for code, target in self.bus_targets.items()
@@ -867,7 +902,7 @@ class MainWindow(QMainWindow):
         self.clear_layout(self.outputs_layout)
         self.channel_strips.clear()
         self.input_strips.clear()
-        nodes = self.backend.enumerate_nodes()
+        nodes = discovered_nodes if discovered_nodes is not None else self.backend.enumerate_nodes()
         if self.backend.last_discovery_error and not self.discovery_error_shown:
             self.discovery_error_shown = True
             message = self.backend.last_discovery_error
@@ -878,6 +913,7 @@ class MainWindow(QMainWindow):
                     + detail
                 ),
             )
+        self.node_signature = self.discovery_signature(nodes)
         input_nodes = sorted(
             (
                 n
@@ -915,7 +951,7 @@ class MainWindow(QMainWindow):
         if virtual_bus_errors:
             QTimer.singleShot(0, lambda: self.show_error(virtual_bus_errors[0]))
 
-        for node in input_nodes[:12]:
+        for node in input_nodes:
             strip = ChannelStrip(
                 node,
                 self.backend,
@@ -953,7 +989,7 @@ class MainWindow(QMainWindow):
         outputs_title = QLabel("OUTPUT DEVICES")
         outputs_title.setStyleSheet("font-size: 14px; font-weight: 800; color: #c9b8d3;")
         self.outputs_layout.addWidget(outputs_title, 2, 0, 1, 3)
-        for index, node in enumerate(output_nodes[:12]):
+        for index, node in enumerate(output_nodes):
             strip = ChannelStrip(
                 node,
                 self.backend,

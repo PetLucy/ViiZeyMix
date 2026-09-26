@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.2 - 2026-09-25
+
+- Added automatic discovery of application playback streams such as Firefox.
+- Removed the twelve-source and twelve-output display limits.
+- Refresh the mixer only when the visible PipeWire node set changes, while
+  ignoring ViiZeyMix meter and DSP helper nodes.
+- Create non-autoconnecting meter nodes and explicitly link each source by its
+  unique PipeWire node ID, preventing every meter from following the default
+  capture device.
+
 ## 0.8.1 - 2026-09-20
 
 - Replaced the large Gate dial and detail page with a compact horizontal Gate

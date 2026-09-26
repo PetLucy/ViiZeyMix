@@ -17,6 +17,11 @@
     <binary>viizeymix</binary>
   </provides>
   <releases>
+    <release version="0.8.2" date="2026-09-25">
+      <description>
+        <p>Automatically discovers application playback streams and removes device display limits.</p>
+      </description>
+    </release>
     <release version="0.8.1" date="2026-09-20">
       <description>
         <p>Moves the noise gate to a compact horizontal control below Gain.</p>
